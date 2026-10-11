@@ -172,6 +172,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	private static String lastDownloadPath;
 
 	private static boolean needWriteConfig;
+	private static boolean autoAuthCheck;
+	private static boolean mainUserItemsAdded;
 
 	// platform
 	static boolean symbianJrt;
@@ -590,41 +592,10 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		s.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
 		f.append(s);
 		
-		if (login != null) { // authorized
-			f.append("\n");
-			
-			s = new StringItem(null, L[LYourProfile], StringItem.BUTTON);
-			s.setDefaultCommand(yourProfileCmd);
-			s.setItemCommandListener(this);
-			s.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
-			f.append(s);
-
-			s = new StringItem(null, "Feed", StringItem.BUTTON);
-			s.setDefaultCommand(yourFeedCmd);
-			s.setItemCommandListener(this);
-			s.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
-			f.append(s);
-
-//			s = new StringItem(null, "Notifications", StringItem.BUTTON);
-//			s.setDefaultCommand(yourNotificationsCmd);
-//			s.setItemCommandListener(this);
-//			s.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
-//			f.append(s);
-
-			s = new StringItem(null, L[LYourRepositories], StringItem.BUTTON);
-			s.setDefaultCommand(yourReposCmd);
-			s.setItemCommandListener(this);
-			s.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
-			f.append(s);
-
-			s = new StringItem(null, L[LYourStars], StringItem.BUTTON);
-			s.setDefaultCommand(yourStarsCmd);
-			s.setItemCommandListener(this);
-			s.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
-			f.append(s);
-		}
+		mainUserItemsAdded = false;
 		
 		display.setCurrent(current = mainForm = f);
+		appendMainUserItems();
 		// show network access settings on blackberry
 		if (blackberry && blackberryNetwork == -1) {
 			commandAction(settingsCmd, current);
@@ -632,6 +603,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			return;
 		}
 		if (validateSavedAuth) {
+			autoAuthCheck = true;
 			start(RUN_VALIDATE_AUTH, null);
 		}
 		
@@ -641,6 +613,32 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			start(RUN_THUMBNAILS, null);
 			start(RUN_THUMBNAILS, null);
 		}
+	}
+
+	private void appendMainUserItems() {
+		if (mainUserItemsAdded || login == null || mainForm == null) return;
+		mainUserItemsAdded = true;
+		mainForm.append("\n");
+		StringItem item = new StringItem(null, L[LYourProfile], StringItem.BUTTON);
+		item.setDefaultCommand(yourProfileCmd);
+		item.setItemCommandListener(midlet);
+		item.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
+		mainForm.append(item);
+		item = new StringItem(null, "Feed", StringItem.BUTTON);
+		item.setDefaultCommand(yourFeedCmd);
+		item.setItemCommandListener(midlet);
+		item.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
+		mainForm.append(item);
+		item = new StringItem(null, L[LYourRepositories], StringItem.BUTTON);
+		item.setDefaultCommand(yourReposCmd);
+		item.setItemCommandListener(midlet);
+		item.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
+		mainForm.append(item);
+		item = new StringItem(null, L[LYourStars], StringItem.BUTTON);
+		item.setDefaultCommand(yourStarsCmd);
+		item.setItemCommandListener(midlet);
+		item.setLayout(Item.LAYOUT_EXPAND | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
+		mainForm.append(item);
 	}
 
 	// endregion
@@ -1839,7 +1837,9 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			break;
 		}
 		case RUN_VALIDATE_AUTH: { // validate and refresh auth
-			display(loadingAlert(L[LAuthorizing]), null);
+			boolean silentCheck = autoAuthCheck;
+			autoAuthCheck = false;
+			if (!silentCheck) display(loadingAlert(L[LAuthorizing]), null);
 			login = null;
 			
 			
@@ -1902,6 +1902,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				}
 				writeGiteaAuth();
 			}
+			appendMainUserItems();
 			display(/*current*/ mainForm, true);
 			if (param != null) {
 				apiMode = prevMode;
