@@ -60,7 +60,11 @@ import cc.nnproject.json.JSONArray;
 import cc.nnproject.json.JSONObject;
 import cc.nnproject.json.JSONStream;
 
-public class GH extends MIDlet implements CommandListener, ItemCommandListener, ItemStateListener, Runnable, LangConstants {
+public class GH implements CommandListener, ItemCommandListener, ItemStateListener, Runnable, LangConstants {
+	public interface Host {
+		void openTokenNotePicker(int apiMode);
+		String getHostLanguage();
+	}
 
 	// region Constants
 
@@ -142,6 +146,9 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 	static Display display;
 	static GH midlet;
 	static Displayable current;
+	private static MIDlet host;
+	private static Runnable exitHandler;
+	private static Displayable tokenImportReturn;
 
 	private static String version;
 
@@ -275,6 +282,8 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 	private static Command authRegenCmd;
 	private static Command authManualCmd;
 	private static Command authPersonalTokenCmd;
+	private static Command authImportTokenFileCmd;
+	private static Command authImportTokenNoteCmd;
 
 	static Command okCmd;
 	static Command cancelCmd;
@@ -326,23 +335,30 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 
 	// region MIDlet
 
+	public static void open(MIDlet app, Runnable onExit) {
+		host = app;
+		exitHandler = onExit;
+		if (midlet == null) new GH().start();
+		else display.setCurrent(current == null ? mainForm : current);
+	}
+
 	protected void destroyApp(boolean unconditional) {
 		if (needWriteConfig) {
 			try {
 				writeConfig();
 			} catch (Throwable ignored) {}
 		}
-		notifyDestroyed();
+		if (exitHandler != null) exitHandler.run();
 	}
 
 	protected void pauseApp() {}
 
-	protected void startApp() {
+	private void start() {
 		if (midlet != null) return;
 		midlet = this;
 		
-		version = getAppProperty("MIDlet-Version");
-		(display = Display.getDisplay(this))
+		version = host.getAppProperty("MIDlet-Version");
+		(display = Display.getDisplay(host))
 		.setCurrent(current = new Form("gh2me"));
 		
 		String p = System.getProperty("microedition.platform");
@@ -383,7 +399,7 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 			browseProxyUrl = j.getString("browseProxy", browseProxyUrl);
 			apiMode = j.getInt("apiMode", apiMode);
 			customApiUrl = j.getString("customApiUrl", customApiUrl);
-			lang = j.getString("lang", lang);
+			lang = ((Host) host).getHostLanguage();
 			noFormat = j.getBoolean("noFormat", noFormat);
 			onlineResize = j.getBoolean("onlineResize", onlineResize);
 			loadImages = j.getBoolean("loadImages", loadImages);
@@ -508,6 +524,8 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 		authRegenCmd = new Command(L[LRegenerate], Command.ITEM, 1);
 		authManualCmd = new Command(L[LManualOAuth], Command.ITEM, 1);
 		authPersonalTokenCmd = new Command(L[LPersonalToken], Command.ITEM, 1);
+		authImportTokenFileCmd = new Command(midplay.util.Lang.tr("github.import_token_file"), Command.SCREEN, 2);
+		authImportTokenNoteCmd = new Command(midplay.util.Lang.tr("github.import_token_note"), Command.SCREEN, 3);
 
 		okCmd = new Command(L[LOk], Command.OK, 1);
 		cancelCmd = new Command(L[LCancel], Command.CANCEL, 2);
@@ -531,13 +549,10 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 		loadingForm.addCommand(cancelCmd);
 		loadingForm.setCommandListener(this);
 		
-		// check auth
-		if ((apiMode == API_GITHUB && githubAccessToken != null)
-				|| (apiMode == API_GITEA && (giteaRefreshToken != null || giteaAccessToken != null))) {
-//			start(RUN_VALIDATE_AUTH, null);
-			run = RUN_VALIDATE_AUTH;
-			run();
-		}
+		// Validate saved authentication asynchronously after the main screen is visible.
+		boolean validateSavedAuth =
+			(apiMode == API_GITHUB && githubAccessToken != null)
+				|| (apiMode == API_GITEA && (giteaRefreshToken != null || giteaAccessToken != null));
 		
 		// init main form
 		Form f = new Form(L[Lgh2me]);
@@ -615,6 +630,9 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 			commandAction(settingsCmd, current);
 			display(infoAlert(L[LChooseNetwork_Alert]), current);
 			return;
+		}
+		if (validateSavedAuth) {
+			start(RUN_VALIDATE_AUTH, null);
 		}
 		
 		start(RUN_THUMBNAILS, null);
@@ -1039,9 +1057,21 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 				TextBox t = new TextBox(L[LPersonalToken], "", 200, TextField.NON_PREDICTIVE);
 				t.addCommand(cancelCmd);
 				t.addCommand(authDoneCmd);
+				t.addCommand(authImportTokenFileCmd);
+				t.addCommand(authImportTokenNoteCmd);
 				t.setCommandListener(this);
 				display(t);
 				
+				return;
+			}
+			if (c == authImportTokenFileCmd) {
+				tokenImportReturn = d;
+				openFilePicker(lastDownloadPath, 1);
+				return;
+			}
+			if (c == authImportTokenNoteCmd) {
+				tokenImportReturn = d;
+				((Host) host).openTokenNotePicker(oauthMode);
 				return;
 			}
 			if (c == authManualCmd) {
@@ -1128,7 +1158,7 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 					oauthUrl = getOauthUrl(oauthMode);
 				}
 				try {
-					platformRequest(oauthUrl);
+					host.platformRequest(oauthUrl);
 				} catch (Exception e) {
 					display(errorAlert(e.toString()), d);
 					e.printStackTrace();
@@ -1418,7 +1448,12 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 				}
 
 				if (fileMode == 1) {
-					// file selected
+					try {
+						importTokenFromText(oauthMode, readTokenFile("file:///".concat(path).concat(name)));
+					} catch (Exception e) {
+						display(errorAlert(e.toString()), current);
+					}
+					return;
 				} else {
 					// folder selected
 					if (downloadFile == null) {
@@ -2423,6 +2458,56 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 		display(infoAlert(L[LBookmarkSaved]), d);
 	}
 
+	public static void importTokenFromText(int provider, String token) {
+		if (token == null || token.trim().length() == 0) {
+			if (tokenImportReturn != null) display(tokenImportReturn, true);
+			tokenImportReturn = null;
+			display(errorAlert(midplay.util.Lang.tr("github.token_empty")), current);
+			return;
+		}
+		oauthMode = provider;
+		token = token.trim();
+		long now = System.currentTimeMillis();
+		if (provider == API_GITHUB) {
+			githubAccessToken = token;
+			githubAccessTokenTime = now;
+		} else {
+			giteaAccessToken = token;
+			giteaAccessTokenTime = now;
+			giteaRefreshToken = null;
+			giteaRefreshTokenTime = 0;
+		}
+		if (tokenImportReturn != null) display(tokenImportReturn, true);
+		tokenImportReturn = null;
+		midlet.start(RUN_VALIDATE_AUTH, midlet);
+	}
+
+	public static void cancelTokenImport() {
+		if (tokenImportReturn != null) display(tokenImportReturn, true);
+		tokenImportReturn = null;
+	}
+
+	private static String readTokenFile(String path) throws IOException {
+		FileConnection file = null;
+		InputStream input = null;
+		try {
+			file = (FileConnection) Connector.open(path, Connector.READ);
+			input = file.openInputStream();
+			InputStreamReader reader = new InputStreamReader(input, "UTF-8");
+			StringBuffer text = new StringBuffer();
+			char[] buffer = new char[128];
+			int count;
+			while (text.length() < 4096
+					&& (count = reader.read(buffer, 0, Math.min(buffer.length, 4096 - text.length()))) != -1) {
+				text.append(buffer, 0, count);
+			}
+			return text.toString();
+		} finally {
+			if (input != null) try { input.close(); } catch (Exception ignored) {}
+			if (file != null) try { file.close(); } catch (Exception ignored) {}
+		}
+	}
+
 	static void openFilePicker(String path, int mode) {
 		inSourceBrowser = false;
 		fileMode = mode;
@@ -2644,7 +2729,7 @@ public class GH extends MIDlet implements CommandListener, ItemCommandListener, 
 				// workaround specifically for my e7 because "services" app doesn't work there
 				url = "nativeapp://application-uid=0x10008D39;content=4 " + url;
 			}
-			if (platformRequest(url)) destroyApp(true);
+			if (host.platformRequest(url)) destroyApp(true);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
