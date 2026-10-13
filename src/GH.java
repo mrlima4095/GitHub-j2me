@@ -41,7 +41,6 @@ import javax.microedition.lcdui.CommandListener;
 import javax.microedition.lcdui.Display;
 import javax.microedition.lcdui.Displayable;
 import javax.microedition.lcdui.Font;
-import javax.microedition.lcdui.Form;
 import javax.microedition.lcdui.Gauge;
 import javax.microedition.lcdui.Image;
 import javax.microedition.lcdui.ImageItem;
@@ -63,7 +62,9 @@ import cc.nnproject.json.JSONStream;
 public class GH implements CommandListener, ItemCommandListener, ItemStateListener, Runnable, LangConstants {
 	public interface Host {
 		void openTokenNotePicker(int apiMode);
+		void openTelegramLink(String url);
 		String getHostLanguage();
+		void openMIDPlayNowPlayingFromGH();
 	}
 
 	// region Constants
@@ -174,6 +175,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	private static boolean needWriteConfig;
 	private static boolean autoAuthCheck;
 	private static boolean mainUserItemsAdded;
+	static boolean legacyUI;
+	static boolean canvasFullscreen;
 
 	// platform
 	static boolean symbianJrt;
@@ -226,6 +229,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	private static Command yourStarsCmd;
 	private static Command yourFeedCmd;
 	private static Command yourNotificationsCmd;
+	private static Command hostNowPlayingCmd;
 
 	private static Command goCmd;
 	static Command downloadCmd;
@@ -307,11 +311,11 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	// endregion Commands
 
 	// ui
-	private static Form mainForm;
-	private static Form settingsForm;
-	private static Form searchForm;
-	private static List bookmarksList;
-	static Form loadingForm;
+	private static CanvasForm mainForm;
+	private static CanvasForm settingsForm;
+	private static CanvasForm searchForm;
+	private static CanvasList bookmarksList;
+	static CanvasForm loadingForm;
 	private static final Vector formHistory = new Vector();
 
 	// main form items
@@ -322,6 +326,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	private static TextField browseProxyField;
 	private static ChoiceGroup proxyChoice;
 	private static ChoiceGroup modeChoice;
+	private static ChoiceGroup legacyUIChoice;
+	private static ChoiceGroup canvasFullscreenChoice;
 	private static TextField customApiField;
 	private static ChoiceGroup networkChoice;
 	private static ChoiceGroup downloadMethodChoice;
@@ -341,7 +347,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		host = app;
 		exitHandler = onExit;
 		if (midlet == null) new GH().start();
-		else display.setCurrent(current == null ? mainForm : current);
+		else display.setCurrent(screenFor(current == null ? mainForm : current));
 	}
 
 	protected void destroyApp(boolean unconditional) {
@@ -360,8 +366,9 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		midlet = this;
 		
 		version = host.getAppProperty("MIDlet-Version");
-		(display = Display.getDisplay(host))
-		.setCurrent(current = new Form("gh2me"));
+		display = Display.getDisplay(host);
+		current = new CanvasForm("gh2me");
+		display.setCurrent(screenFor(current));
 		
 		String p = System.getProperty("microedition.platform");
 		if (p == null) p = "";
@@ -402,6 +409,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			apiMode = j.getInt("apiMode", apiMode);
 			customApiUrl = j.getString("customApiUrl", customApiUrl);
 			lang = ((Host) host).getHostLanguage();
+			legacyUI = j.getBoolean("legacyUI", legacyUI);
+			canvasFullscreen = j.getBoolean("canvasFullscreen", canvasFullscreen);
 			noFormat = j.getBoolean("noFormat", noFormat);
 			onlineResize = j.getBoolean("onlineResize", onlineResize);
 			loadImages = j.getBoolean("loadImages", loadImages);
@@ -470,7 +479,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		yourStarsCmd = new Command(L[LYourStars], Command.ITEM, 1);
 		yourFeedCmd = new Command("Feed", Command.ITEM, 1);
 		yourNotificationsCmd = new Command("Notifications", Command.ITEM, 1);
-		
+		hostNowPlayingCmd = new Command(L[LNowPlaying], Command.SCREEN, 8);
+
 		goCmd = new Command(L[LGo], Command.ITEM, 1);
 		downloadCmd = new Command(L[LDownload], Command.ITEM, 1);
 		openCmd = new Command(L[LOpen], Command.ITEM, 1);
@@ -546,7 +556,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 
 		downloadPathCmd = new Command(L[LLocate], Command.ITEM, 1);
 		
-		loadingForm = new Form(L[Lgh2me]);
+		loadingForm = new CanvasForm(L[Lgh2me]);
 		loadingForm.append(L[LLoading]);
 		loadingForm.addCommand(cancelCmd);
 		loadingForm.setCommandListener(this);
@@ -557,7 +567,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				|| (apiMode == API_GITEA && (giteaRefreshToken != null || giteaAccessToken != null));
 		
 		// init main form
-		Form f = new Form(L[Lgh2me]);
+		CanvasForm f = new CanvasForm(L[Lgh2me]);
 		f.addCommand(exitCmd);
 		f.addCommand(settingsCmd);
 		f.addCommand(aboutCmd);
@@ -594,7 +604,10 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		
 		mainUserItemsAdded = false;
 		
-		display.setCurrent(current = mainForm = f);
+		mainForm = f;
+		current = mainForm;
+		mainForm.addCommand(hostNowPlayingCmd);
+		display.setCurrent(screenFor(current));
 		appendMainUserItems();
 		// show network access settings on blackberry
 		if (blackberry && blackberryNetwork == -1) {
@@ -654,7 +667,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			}
 			if (c == settingsCmd) {
 				if (settingsForm == null) {
-					Form f = new Form(L[LSettings]);
+					CanvasForm f = new CanvasForm(L[LSettings]);
 					f.addCommand(backCmd);
 					f.setCommandListener(this);
 
@@ -665,6 +678,18 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 							}, null);
 					modeChoice.setSelectedIndex(apiMode, true);
 					f.append(modeChoice);
+
+					legacyUIChoice = CanvasForm.choiceGroup(L[LLegacyUI], Choice.POPUP, new String[] {
+							L[LCanvas], L[LLegacy]
+					}, null);
+					legacyUIChoice.setSelectedIndex(legacyUI ? 1 : 0, true);
+					f.append(legacyUIChoice);
+
+					canvasFullscreenChoice = CanvasForm.choiceGroup(L[LCanvasFullscreen], Choice.POPUP, new String[] {
+							L[LOff], L[LOn]
+					}, null);
+					canvasFullscreenChoice.setSelectedIndex(canvasFullscreen ? 1 : 0, true);
+					f.append(canvasFullscreenChoice);
 					
 					customApiField = new TextField(L[LGiteaAPIURL],
 							customApiUrl == null ? GITEA_DEFAULT_API_URL : customApiUrl, 200, TextField.URL);
@@ -723,13 +748,13 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				display(settingsForm);
 				if (blackberry && blackberryNetwork == -1) {
 					try {
-						display.setCurrentItem(networkChoice);
+						settingsForm.setCurrentItem(networkChoice);
 					} catch (Exception ignored) {}
 				}
 				return;
 			}
 			if (c == aboutCmd) {
-				Form f = new Form("About");
+					CanvasForm f = new CanvasForm("About");
 				f.addCommand(backCmd);
 				f.setCommandListener(this);
 				
@@ -785,7 +810,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			}
 			if (c == searchCmd) {
 				if (searchForm == null) {
-					Form f = new Form(L[LSearch]);
+					CanvasForm f = new CanvasForm(L[LSearch]);
 					f.addCommand(backCmd);
 					f.setCommandListener(this);
 					f.setItemStateListener(this);
@@ -815,7 +840,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				return;
 			}
 			if (c == authCmd) {
-				Form f = new Form(L[LAccounts]);
+					CanvasForm f = new CanvasForm(L[LAccounts]);
 				f.addCommand(backCmd);
 				f.setCommandListener(this);
 				
@@ -884,6 +909,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				useProxy = proxyChoice.isSelected(1);
 				onlineResize = proxyChoice.isSelected(2);
 				apiMode = modeChoice.getSelectedIndex();
+				legacyUI = legacyUIChoice.getSelectedIndex() == 1;
+				canvasFullscreen = canvasFullscreenChoice.getSelectedIndex() == 1;
 				if ((customApiUrl = customApiField.getString()).trim().length() == 0)
 					customApiUrl = null;
 
@@ -933,11 +960,11 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				return;
 			}
 			//noinspection DataFlowIssue // bookmarksList is List
-			int i = ((List) d).getSelectedIndex();
+			int i = ((CanvasList) d).getSelectedIndex();
 			if (i == -1 || bookmarks == null) return;
 			if (c == removeBookmarkCmd) {
 				if (movingBookmark != -1) return;
-				((List) d).delete(i);
+				((CanvasList) d).delete(i);
 				bookmarks.remove(i);
 				return;
 			}
@@ -965,9 +992,9 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 						Object bm = bookmarks.get(j);
 						bookmarks.remove(i);
 						bookmarks.put(i, (String) bm);
-						String s = ((List) d).getString(j);
-						((List) d).delete(j);
-						((List) d).insert(i, s, null);
+						String s = ((CanvasList) d).getString(j);
+						((CanvasList) d).delete(j);
+						((CanvasList) d).insert(i, s, null);
 					}
 					return;
 				}
@@ -985,7 +1012,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				int type = searchChoice.getSelectedIndex();
 				String q = searchField.getString();
 				
-				Form f;
+				CanvasForm f;
 				switch (type) {
 				case 0: // repositories
 					f = new ReposOrUsersForm((GH.apiMode == GH.API_GITEA ? "repos/search?q=" : "search/repositories?q=")
@@ -1017,7 +1044,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			if (c == authGithubCmd || c == authGiteaCmd) {
 				oauthMode = c == authGithubCmd ? 0 : 1;
 				
-				Form f = new Form(L[LAuthorization]);
+				CanvasForm f = new CanvasForm(L[LAuthorization]);
 				f.addCommand(backCmd);
 				f.setCommandListener(this);
 				
@@ -1075,7 +1102,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			if (c == authManualCmd) {
 				String url = oauthUrl = getOauthUrl(oauthMode);
 				
-				Form f = new Form(L[LAuthorization]);
+				CanvasForm f = new CanvasForm(L[LAuthorization]);
 				f.addCommand(backCmd);
 				f.setCommandListener(this);
 
@@ -1229,7 +1256,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			}
 			a: {
 				String url = ((RepoForm) d).url;
-				Form f;
+				GHForm f;
 				if (c == releasesCmd) {
 					f = new ReleasesForm(url, false);
 				} else if (c == tagsCmd) {
@@ -1409,12 +1436,12 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		// File list commands
 		if (c == List.SELECT_COMMAND) {
 			//noinspection DataFlowIssue // assume d can only be List since we got List.SELECT_COMMAND
-			int i = ((List) d).getSelectedIndex();
+			int i = ((CanvasList) d).getSelectedIndex();
 			if (i == -1) return;
 			//noinspection DataFlowIssue
-			boolean dir = ((List) d).getImage(i) == folderImg;
+			boolean dir = ((CanvasList) d).getImage(i) == folderImg;
 			//noinspection DataFlowIssue
-			String name = ((List) d).getString(i);
+			String name = ((CanvasList) d).getString(i);
 			String path = d.getTitle();
 
 			if (inSourceBrowser) {
@@ -1424,7 +1451,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				if (dir) {
 					start(RUN_OPEN_PATH, path);
 				} else {
-					Form f = new FileForm(null, null, path, repo, ref);
+					GHForm f = new FileForm(null, null, path, repo, ref);
 					display(f);
 					start(RUN_LOAD_FORM, f);
 				}
@@ -1507,7 +1534,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			}
 			if (c == okDownloadCmd) {
 				display(current);
-				if (current instanceof List) {
+				if (current instanceof CanvasList) {
 					commandAction(backCmd, current);
 				}
 				return;
@@ -1556,6 +1583,10 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		}
 		if (c == homeCmd) {
 			display(null, true);
+			return;
+		}
+		if (c == hostNowPlayingCmd) {
+			((Host) host).openMIDPlayNowPlayingFromGH();
 			return;
 		}
 		if (c == exitCmd) {
@@ -1647,7 +1678,9 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			}
 			return;
 		}
-		commandAction(c, display.getCurrent());
+		// Legacy LCDUI screens are native Forms backed by CanvasForm models.
+		// Route fallback item commands through the model, not the native Form.
+		commandAction(c, current);
 	}
 
 	public void itemStateChanged(Item item) {
@@ -1694,7 +1727,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		}
 		case RUN_BOOKMARKS_SCREEN: { // load bookmarks
 			if (bookmarksList == null) {
-				List list = new List("Bookmarks", List.IMPLICIT);
+						CanvasList list = new CanvasList("Bookmarks", List.IMPLICIT);
 				list.setFitPolicy(Choice.TEXT_WRAP_ON);
 				list.addCommand(backCmd);
 				list.addCommand(List.SELECT_COMMAND);
@@ -2016,7 +2049,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				Object r = api("repos/" + repo + "/contents" + path + "?ref=" + ref);
 				
 				if (r instanceof JSONArray) {
-					List list = new List(path.concat(" - ").concat(repo), List.IMPLICIT);
+					CanvasList list = new CanvasList(path.concat(" - ").concat(repo), List.IMPLICIT);
 					list.addCommand(backCmd);
 					list.addCommand(List.SELECT_COMMAND);
 					list.setCommandListener(this);
@@ -2351,10 +2384,10 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			display.setCurrent(a);
 			return;
 		}
-		if (display.getCurrent() != d) {
+		if (display.getCurrent() != screenFor(d)) {
 			display(d);
 		}
-		display.setCurrent(a, d);
+		display.setCurrent(a, screenFor(d));
 	}
 
 	static void display(Displayable d) {
@@ -2363,11 +2396,11 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 
 	static void display(Displayable d, boolean back) {
 		if (d instanceof Alert) {
-			display.setCurrent((Alert) d, mainForm);
+			display.setCurrent((Alert) d, screenFor(mainForm));
 			return;
 		}
 		if (d == loadingForm) {
-			display.setCurrent(d);
+			display.setCurrent(screenFor(d));
 			return;
 		}
 		if (d == null || d == mainForm) {
@@ -2381,10 +2414,9 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				stopOauthServer();
 			}
 		}
-		Displayable p = display.getCurrent();
-		if (p == loadingForm) p = current;
-
-		display.setCurrent(current = d);
+		Displayable p = current;
+		current = d;
+		display.setCurrent(screenFor(d));
 		if (p == null || p == d) return;
 		
 		if (p instanceof GHForm) {
@@ -2394,6 +2426,12 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		if (!back && d != mainForm && (formHistory.isEmpty() || formHistory.lastElement() != d)) {
 			formHistory.addElement(d);
 		}
+	}
+
+	private static Displayable screenFor(Displayable model) {
+		if (model instanceof CanvasForm) return ((CanvasForm) model).getDisplayable();
+		if (model instanceof CanvasList) return ((CanvasList) model).getDisplayable();
+		return model;
 	}
 
 	// endregion
@@ -2520,7 +2558,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				folderImg = Image.createImage("/folder.png");
 			}
 
-			List list = new List(path, List.IMPLICIT);
+			CanvasList list = new CanvasList(path, List.IMPLICIT);
 			list.addCommand(cancelCmd);
 			list.addCommand(List.SELECT_COMMAND);
 			list.setSelectCommand(List.SELECT_COMMAND);
@@ -3277,6 +3315,11 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 
 	static boolean openUrl(String url) {
 //		System.out.println("openUrl:".concat(url));
+		if (isTelegramUrl(url)) {
+			if (host instanceof Host) ((Host) host).openTelegramLink(url);
+			return true;
+		}
+		url = normalizeGithubUrl(url);
 		if (url.startsWith(GITHUB_URL)) {
 			url = url.substring(19);
 		} else if (url.startsWith(GITHUB_API_URL + "repos/")
@@ -3367,6 +3410,43 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			midlet.start(RUN_LOAD_FORM, f);
 			return true;
 		}
+	}
+
+	private static boolean isTelegramUrl(String url) {
+		if (url == null) return false;
+		String value = url.toLowerCase();
+		return value.startsWith("tg://") || value.startsWith("t.me/")
+				|| value.startsWith("www.t.me/") || value.startsWith("telegram.me/")
+				|| value.startsWith("www.telegram.me/") || value.startsWith("https://t.me/")
+				|| value.startsWith("http://t.me/") || value.startsWith("https://telegram.me/")
+				|| value.startsWith("http://telegram.me/") || value.startsWith("https://www.t.me/")
+				|| value.startsWith("http://www.t.me/") || value.startsWith("https://www.telegram.me/")
+				|| value.startsWith("http://www.telegram.me/");
+	}
+
+	private static String normalizeGithubUrl(String url) {
+		if (url == null) return null;
+		String value = url.toLowerCase();
+		int host;
+		if (value.startsWith("github.com/")) host = 0;
+		else if (value.startsWith("www.github.com/")) host = 4;
+		else if (value.startsWith("https://github.com/")) host = 8;
+		else if (value.startsWith("http://github.com/")) host = 7;
+		else if (value.startsWith("https://www.github.com/")) host = 12;
+		else if (value.startsWith("http://www.github.com/")) host = 11;
+		else return url;
+		int path = url.indexOf("github.com/") + 11;
+		if (host == 4 || host == 11 || host == 12) path = url.indexOf("github.com/") + 11;
+		return GITHUB_URL.concat(url.substring(path));
+	}
+
+	public static void openExternalUrl(String url) {
+		if (url == null) return;
+		openUrl(url.trim());
+	}
+
+	public static void returnToCurrent() {
+		if (display != null) display.setCurrent(screenFor(current == null ? mainForm : current));
 	}
 
 	public static String resolveUrl(String url, String path) {
@@ -3462,7 +3542,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 
 		StringBuffer sb = new StringBuffer();
 		
-		if (detailMode != 0) {
+		if (detailMode != 0 && d >= 0) {
 			if (d < 5) {
 				return L[LNow];
 			}
@@ -3540,6 +3620,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		j.put("apiMode", apiMode);
 		j.put("customApiUrl", customApiUrl);
 		j.put("lang", lang);
+		j.put("legacyUI", legacyUI);
+		j.put("canvasFullscreen", canvasFullscreen);
 		j.put("noFormat", noFormat);
 		j.put("onlineResize", onlineResize);
 		j.put("loadImages", loadImages);
@@ -3603,8 +3685,74 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	// region Date parsing
 
 	static long parseDateGMT(String date) {
-		Calendar c = parseDate(date);
-		return c.getTime().getTime() + c.getTimeZone().getRawOffset() - parseTimeZone(date);
+		if (date == null || date.length() < 8) return 0L;
+		try {
+			int t = date.indexOf('T');
+			if (t == -1) t = date.indexOf('t');
+			String datePart = t == -1 ? date : date.substring(0, t);
+			int year, month, day;
+			if (datePart.indexOf('-') == -1) {
+				year = Integer.parseInt(datePart.substring(0, 4));
+				month = Integer.parseInt(datePart.substring(4, 6));
+				day = Integer.parseInt(datePart.substring(6, 8));
+			} else {
+				String[] fields = split(datePart, '-');
+				year = Integer.parseInt(fields[0]);
+				month = Integer.parseInt(fields[1]);
+				day = Integer.parseInt(fields[2]);
+			}
+
+			int hour = 0, minute = 0, second = 0, millis = 0, timezone = 0;
+			if (t != -1 && t + 1 < date.length()) {
+				String timePart = date.substring(t + 1);
+				int zoneIndex = -1;
+				for (int i = 1; i < timePart.length(); i++) {
+					char c = timePart.charAt(i);
+					if (c == '+' || c == '-' || c == 'Z' || c == 'z') {
+						zoneIndex = i;
+						break;
+					}
+				}
+				String zonePart = zoneIndex == -1 ? "" : timePart.substring(zoneIndex);
+				if (zoneIndex != -1) timePart = timePart.substring(0, zoneIndex);
+				int fraction = timePart.indexOf('.');
+				if (fraction == -1) fraction = timePart.indexOf(',');
+				if (fraction != -1) {
+					String digits = timePart.substring(fraction + 1);
+					if (digits.length() > 0) millis = Integer.parseInt(digits.substring(0, 1)) * 100;
+					if (digits.length() > 1) millis += Integer.parseInt(digits.substring(1, 2)) * 10;
+					if (digits.length() > 2) millis += Integer.parseInt(digits.substring(2, 3));
+					timePart = timePart.substring(0, fraction);
+				}
+				String[] time = split(timePart, ':');
+				if (time.length > 0) hour = Integer.parseInt(time[0]);
+				if (time.length > 1) minute = Integer.parseInt(time[1]);
+				if (time.length > 2) second = Integer.parseInt(time[2]);
+				if (zonePart.length() > 1 && zonePart.charAt(0) != 'Z' && zonePart.charAt(0) != 'z') {
+					String offset = zonePart.substring(1);
+					int colon = offset.indexOf(':');
+					int offsetHours = Integer.parseInt(colon == -1 ? offset.substring(0, 2) : offset.substring(0, colon));
+					int offsetMinutes = colon == -1
+							? (offset.length() >= 4 ? Integer.parseInt(offset.substring(2, 4)) : 0)
+							: Integer.parseInt(offset.substring(colon + 1));
+					timezone = (offsetHours * 60 + offsetMinutes) * 60000;
+					if (zonePart.charAt(0) == '-') timezone = -timezone;
+				}
+			}
+
+			Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("GMT"));
+			calendar.setTime(new Date(0));
+			calendar.set(Calendar.YEAR, year);
+			calendar.set(Calendar.MONTH, month - 1);
+			calendar.set(Calendar.DAY_OF_MONTH, day);
+			calendar.set(Calendar.HOUR_OF_DAY, hour);
+			calendar.set(Calendar.MINUTE, minute);
+			calendar.set(Calendar.SECOND, second);
+			calendar.set(Calendar.MILLISECOND, millis);
+			return calendar.getTime().getTime() - timezone;
+		} catch (Exception e) {
+			return 0L;
+		}
 	}
 
 	// ISO 8601 format date parser without timezone counted

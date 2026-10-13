@@ -94,9 +94,11 @@ public class FileForm extends GHForm {
 			if ((i = ext.lastIndexOf('.')) != -1) {
 				ext = ext.substring(i + 1);
 			} else ext = null;
+			boolean markdownFile = "md".equals(ext) || "markdown".equals(ext);
+			boolean textFile = isTextFile(name, ext);
 
-			if (size > 16*1024
-					|| (!"md".equals(ext) && !"txt".equals(ext) && !GH.previewFiles)
+			if (size > (textFile ? 64 * 1024 : 16 * 1024)
+					|| (!textFile && !GH.previewFiles)
 					|| !r.jumpToKey("content")) {
 				StringItem s;
 				
@@ -121,7 +123,13 @@ public class FileForm extends GHForm {
 				content = new String(GH.decodeBase64(content.getBytes(), len), 0, len[0], "UTF-8");
 			}
 			
-			if (!"md".equals(ext)) {
+			if (!markdownFile) {
+				if (!GH.legacyUI) {
+					CanvasMarkdownItem document = new CanvasMarkdownItem(content, false);
+					document.setFont(GH.smallPlainFont);
+					safeAppend(thread, document);
+					return;
+				}
 				StringItem item = new StringItem(null, content);
 				item.setFont(GH.smallPlainFont);
 				safeAppend(thread, item);
@@ -133,10 +141,37 @@ public class FileForm extends GHForm {
 			} else {
 				urls.clear();
 			}
-			GH.parseMarkdown(thread, this, content, 0, urls);
+			if (!GH.legacyUI) {
+				CanvasMarkdownItem document = new CanvasMarkdownItem(content, true);
+				document.setFont(GH.medPlainFont);
+				safeAppend(thread, document);
+			} else {
+				GH.parseMarkdown(thread, this, content, 0, urls);
+			}
 		} finally {
 			r.close();
 		}
+		}
+
+	private static boolean isTextFile(String name, String extension) {
+		if (extension != null) {
+			String[] textExtensions = {
+				"md", "markdown", "txt", "text", "html", "htm", "xhtml", "xml", "json", "jsonc",
+				"yaml", "yml", "toml", "ini", "cfg", "conf", "cff", "properties", "log", "csv", "tsv",
+				"sh", "bash", "zsh", "js", "jsx", "ts", "tsx", "java", "c", "h", "cc", "cpp", "hpp",
+				"py", "rb", "go", "rs", "css", "scss", "less", "sql", "gradle", "kt", "swift", "php",
+				"pl", "lua", "r", "diff", "patch", "gitignore", "dockerignore", "editorconfig", "gitattributes",
+				"gitmodules", "npmrc", "nvmrc", "env"
+			};
+			for (int i = 0; i < textExtensions.length; i++) {
+				if (textExtensions[i].equals(extension)) return true;
+			}
+		}
+		String file = name == null ? "" : name.toLowerCase();
+		return "dockerfile".equals(file) || "makefile".equals(file) || "license".equals(file)
+				|| "readme".equals(file) || "changelog".equals(file) || "copying".equals(file)
+				|| "notice".equals(file) || "gemfile".equals(file) || "rakefile".equals(file)
+				|| "procfile".equals(file);
 	}
 
 	public String fetchBlobUrl(String url) throws Exception {

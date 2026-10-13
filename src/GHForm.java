@@ -22,11 +22,10 @@ SOFTWARE.
 import java.io.InterruptedIOException;
 import java.util.Hashtable;
 
-import javax.microedition.lcdui.Form;
 import javax.microedition.lcdui.Item;
 import javax.microedition.lcdui.Ticker;
 
-public class GHForm extends Form implements LangConstants {
+public class GHForm extends CanvasForm implements LangConstants {
 
 	String url;
 	Hashtable urls;

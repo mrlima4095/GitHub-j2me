@@ -21,249 +21,70 @@ SOFTWARE.
 */
 import cc.nnproject.json.JSONArray;
 import cc.nnproject.json.JSONObject;
-
-import javax.microedition.lcdui.Item;
-import javax.microedition.lcdui.Spacer;
-import javax.microedition.lcdui.StringItem;
 import java.util.Hashtable;
 
 public class EventsForm extends PagedForm {
-	public EventsForm(String title, String url) {
-		super(title);
-		this.url = url;
-	}
+  public EventsForm(String title, String url) {
+    super(title);
+    this.url = url;
+  }
 
-	void loadInternal(Thread thread) throws Exception {
-		JSONArray r = pagedApi(thread, new StringBuffer(this.url));
-		int l = r.size();
+  void loadInternal(Thread thread) throws Exception {
+    JSONArray events = pagedApi(thread, new StringBuffer(url));
+    if (urls == null) urls = new Hashtable();
+    else urls.clear();
 
-		if (urls == null) {
-			urls = new Hashtable();
-		} else {
-			urls.clear();
-		}
+    for (int i = 0; i < events.size() && thread == this.thread; i++) {
+      JSONObject event = events.getObject(i);
+      String type = event.getString("type", "");
+      String actor = event.getObject("actor").getString("login", "");
+      String repo = event.getObject("repo").getString("name", "");
+      String title = actor;
+      String description = repo;
+      String target = repo;
+      String metadata = "";
+      String created = event.getString("created_at", null);
+      if (created != null && created.length() > 0 && !"PublicEvent".equals(type)) {
+        metadata = GH.localizeDate(created, 1);
+      }
 
-		StringItem s;
-		Spacer sp;
-		for (int i = 0; i < l && thread == this.thread; ++i) {
-			JSONObject j = r.getObject(i);
+      if ("WatchEvent".equals(type)) {
+        boolean yourRepository = GH.login != null && repo.startsWith(GH.login.concat("/"));
+        title = withActor(actor, GH.L[yourRepository ? LEventStarredYour : LEventStarred]);
+      } else if ("ForkEvent".equals(type)) {
+        boolean yourRepository = GH.login != null && repo.startsWith(GH.login.concat("/"));
+        title = withActor(actor, GH.L[yourRepository ? LEventForkedYour : LEventForked]);
+        description = event.getObject("payload").getObject("forkee").getString("full_name", repo);
+        target = description;
+      } else if ("PublicEvent".equals(type)) {
+        title = withActor(actor, GH.L[LEventMadePublic]);
+      } else if ("ReleaseEvent".equals(type)) {
+        title = repo.concat(GH.L[LEventReleased]);
+        String tag = event.getObject("payload").getObject("release").getString("tag_name", "");
+        description = tag;
+        if (tag.length() > 0) target = repo.concat("/releases/tag/").concat(tag);
+      } else if ("PushEvent".equals(type)) {
+        title = withActor(actor, GH.L[LEventPushed]);
+        JSONObject payload = event.getObject("payload");
+        String commit = payload.getString("head", "");
+        String branch = payload.getString("ref", "");
+        if (branch.startsWith("refs/heads/")) branch = branch.substring(11);
+        String shortCommit = commit.length() > 7 ? commit.substring(0, 7) : commit;
+        description = repo.concat("\n").concat(shortCommit);
+		if (branch.length() > 0) description = description.concat("  -  ").concat(branch);
+        if (commit.length() > 0) target = repo.concat("/commit/").concat(commit);
+      }
 
-			System.out.println(j.format(0));
-			System.out.println();
+      RepoCardItem card = new RepoCardItem(title, description, metadata);
+      card.setFont(GH.medPlainFont);
+      card.setDefaultCommand(GH.mdLinkCmd);
+      card.setItemCommandListener(GH.midlet);
+      if (target != null && target.length() > 0) urls.put(card, target);
+      safeAppend(thread, card);
+    }
+  }
 
-			String type = j.getString("type");
-			if ("WatchEvent".equals(type)) {
-				// user starred a repo
-
-				JSONObject actor = j.getObject("actor");
-				String repo = j.getObject("repo").getString("name");
-
-				s = new StringItem(null, actor.getString("login"));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-				s.setDefaultCommand(GH.userCmd);
-				s.setItemCommandListener(GH.midlet);
-				safeAppend(thread, s);
-
-				boolean your = repo.startsWith(GH.login.concat("/"));
-
-				s = new StringItem(null, your ? " starred your repository" : " starred a repository");
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, GH.localizeDate(j.getString("created_at"), 1));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-
-				if (your) {
-					s = new StringItem(null, repo);
-					s.setFont(GH.medPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-					s.setDefaultCommand(GH.repoCmd);
-					s.setItemCommandListener(GH.midlet);
-					safeAppend(thread, s);
-				} else {
-					s = new StringItem(null, repo.substring(0, repo.indexOf('/')));
-					s.setFont(GH.medPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-					s.setDefaultCommand(GH.userCmd);
-					s.setItemCommandListener(GH.midlet);
-					safeAppend(thread, s);
-
-					s = new StringItem(null, "/");
-					s.setFont(GH.medPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT);
-					safeAppend(thread, s);
-
-					s = new StringItem(null, repo.substring(repo.indexOf('/') + 1));
-					s.setFont(GH.medPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-					s.setDefaultCommand(GH.mdLinkCmd);
-					s.setItemCommandListener(GH.midlet);
-					urls.put(s, repo);
-					safeAppend(thread, s);
-				}
-			} else if ("ForkEvent".equals(type)) {
-				// user forked a repo
-
-				JSONObject actor = j.getObject("actor");
-
-				s = new StringItem(null, actor.getString("login"));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-				s.setDefaultCommand(GH.userCmd);
-				s.setItemCommandListener(GH.midlet);
-				safeAppend(thread, s);
-
-				JSONObject repo = j.getObject("repo");
-				boolean your = repo.has("name") && repo.getString("name").startsWith(GH.login.concat("/"));
-
-				s = new StringItem(null, your ? " forked your repository" : " forked a repository");
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, GH.localizeDate(j.getString("created_at"), 1));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, j.getObject("payload").getObject("forkee").getString("full_name"));
-				s.setFont(GH.medPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				s.setDefaultCommand(GH.repoCmd);
-				s.setItemCommandListener(GH.midlet);
-				safeAppend(thread, s);
-			} else if ("PublicEvent".equals(type)) {
-				// user made a repo public
-
-				JSONObject actor = j.getObject("actor");
-
-				s = new StringItem(null, actor.getString("login"));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-				s.setDefaultCommand(GH.userCmd);
-				s.setItemCommandListener(GH.midlet);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, " made this repository public");
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-
-				// date in this event is always not correct for some reason
-//				s = new StringItem(null, GH.localizeDate(j.getString("created_at"), 1));
-//				s.setFont(GH.smallPlainFont);
-//				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-//				safeAppend(thread, s);
-
-				s = new StringItem(null, j.getObject("repo").getString("name"));
-				s.setFont(GH.medPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				s.setDefaultCommand(GH.repoCmd);
-				s.setItemCommandListener(GH.midlet);
-				safeAppend(thread, s);
-			} else if ("ReleaseEvent".equals(type)) {
-				// release
-
-//				JSONObject actor = j.getObject("actor");
-				String repo = j.getObject("repo").getString("name");
-
-//				s = new StringItem(null, actor.getString("login"));
-//				s.setFont(GH.smallPlainFont);
-//				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-//				s.setDefaultCommand(GH.userCmd);
-//				s.setItemCommandListener(GH.midlet);
-//				safeAppend(thread, s);
-				
-				s = new StringItem(null, repo);
-				s.setFont(GH.smallPlainFont);
-				s.setDefaultCommand(GH.repoCmd);
-				s.setItemCommandListener(GH.midlet);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, " released");
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, GH.localizeDate(j.getString("created_at"), 1));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-				
-				try {
-					String tag = j.getObject("payload").getObject("release").getString("tag_name");
-					s = new StringItem(null, tag);
-					s.setFont(GH.medPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-					s.addCommand(GH.mdLinkCmd);
-					s.setItemCommandListener(GH.midlet);
-					urls.put(s, repo + "/releases/tag/" + tag);
-					safeAppend(thread, s);
-				} catch (Exception ignored) {}
-				// TODO
-			} else if ("PushEvent".equals(type)) {
-				// push
-				
-				JSONObject actor = j.getObject("actor");
-				String commit = j.getObject("payload").getString("head");
-				String repo = j.getObject("repo").getString("name");
-				String ref = j.getObject("payload").getString("ref");
-				if (ref.startsWith("refs/heads/")) ref = ref.substring(11);
-
-				s = new StringItem(null, actor.getString("login"));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-				s.setDefaultCommand(GH.userCmd);
-				s.setItemCommandListener(GH.midlet);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, " pushed ");
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT);
-				safeAppend(thread, s);
-				
-				s = new StringItem(null, commit.substring(0, 7));
-				s.setFont(GH.smallPlainFont);
-				urls.put(s, repo + "/commit/" + commit);
-				s.setDefaultCommand(GH.mdLinkCmd);
-				s.setItemCommandListener(GH.midlet);
-				s.setLayout(Item.LAYOUT_LEFT);
-				safeAppend(thread, s);
-				
-				s = new StringItem(null, " to ");
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT);
-				safeAppend(thread, s);
-				
-				s = new StringItem(null, ref);
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, GH.localizeDate(j.getString("created_at"), 1));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-
-				s = new StringItem(null, repo);
-				s.setFont(GH.medPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				s.setDefaultCommand(GH.repoCmd);
-				s.setItemCommandListener(GH.midlet);
-				safeAppend(thread, s);
-			} else {
-				append("\nUndefined event: " + type + "\n");
-//				continue;
-			}
-
-			sp = new Spacer(10, 8);
-			sp.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-			safeAppend(thread, sp);
-		}
-	}
+  private static String withActor(String actor, String action) {
+    return actor == null || actor.length() == 0 ? action : actor.concat(" ").concat(action);
+  }
 }

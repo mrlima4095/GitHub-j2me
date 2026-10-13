@@ -9,6 +9,7 @@
 	"Back": "Back",
 	"Settings": "Settings",
 	"About": "About",
+	"NowPlaying": "Now Playing",
 	
 	// Date offsets
 	"_secondAgo": " second ago",
@@ -170,10 +171,16 @@
 	"URL_Main": "URL (user or user/repo)",
 	"YourProfile": "Your profile",
 	"YourRepositories": "Your repositories",
-	"YourStars": " Your stars",
+	"YourStars": "Your stars",
 	
 	// Settings
 	"Mode_API": "Mode",
+	"LegacyUI": "Interface",
+	"Canvas": "Canvas",
+	"Legacy": "Legacy LCDUI",
+	"CanvasFullscreen": "Canvas fullscreen",
+	"On": "On",
+	"Off": "Off",
 	"CustomAPIURL": "Custom API URL",
 	"GiteaAPIURL": "Gitea API URL",
 	"APIProxyURL": "API Proxy URL",
@@ -224,7 +231,7 @@
 	"DownloadZIP": "Download ZIP",
 	"PullRequests": "Pull requests",
 	"_authored": " authored ",
-	"_commited": " commited ",
+	"_commited": " committed ",
 	"_fork_": " (fork)",
 	"Updated": "Updated ",
 	"_private_": " (private)",
@@ -235,6 +242,13 @@
 	"Starred": "Starred",
 	"BrowseSource": "View files",
 	"Readme": "Readme",
+	"EventStarredYour": "starred your repository",
+	"EventStarred": "starred a repository",
+	"EventForkedYour": "forked your repository",
+	"EventForked": "forked a repository",
+	"EventMadePublic": "made a repository public",
+	"EventReleased": "published a release",
+	"EventPushed": "pushed a commit",
 	
 	// Issues/Pulls
 	"_opened": " opened ",

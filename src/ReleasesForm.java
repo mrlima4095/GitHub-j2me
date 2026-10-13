@@ -153,7 +153,7 @@ public class ReleasesForm extends PagedForm implements ItemCommandListener {
 				safeInsert(thread, i + k, s);
 				if (k == 0) {
 					try {
-						GH.display.setCurrentItem(s);
+						setCurrentItem(s);
 					} catch (Exception ignored) {}
 				}
 			}

@@ -52,89 +52,57 @@ public class ReposOrUsersForm extends PagedForm {
 		} else {
 			urls.clear();
 		}
-		StringItem s;
-		String t;
 		for (int i = 0; i < l && thread == this.thread; ++i) {
 			JSONObject j = r.getObject(i);
-			
+
 			// user
 			if (mode == 2) {
-				s = new StringItem(null, j.getString("login"));
-				s.setFont(GH.medPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				s.setDefaultCommand(GH.userCmd);
-				s.setItemCommandListener(GH.midlet);
-				safeAppend(thread, s);
-				
-				if (j.has("contributions")) {
-					s = new StringItem(null, j.getString("contributions").concat(GH.L[L_contributions]));
-					s.setFont(GH.medPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-					safeAppend(thread, s);
-					
-					safeAppend(thread, "\n");
-				}
+				String contributions = j.getString("contributions", null);
+				String details = contributions == null ? "" : contributions.concat(GH.L[L_contributions]);
+				RepoCardItem card = new RepoCardItem(j.getString("login"), details, "");
+				card.setFont(GH.medPlainFont);
+				card.setDefaultCommand(GH.userCmd);
+				card.setItemCommandListener(GH.midlet);
+				safeAppend(thread, card);
 				continue;
 			}
-			
-			// repo
 
-			if (mode == 1) {
-				s = new StringItem(null, j.getObject("owner").getString("login"));
-				s.setFont(GH.medPlainFont);
-				s.setDefaultCommand(GH.userCmd);
-				s.setItemCommandListener(GH.midlet);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-				safeAppend(thread, s);
-				
-				s = new StringItem(null, "/");
-				s.setFont(GH.medPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT);
-				safeAppend(thread, s);
+			String name = j.getString("name", "");
+			String fullName = j.getString("full_name", null);
+			if (fullName == null || fullName.length() == 0) {
+				JSONObject owner = j.has("owner") ? j.getObject("owner") : null;
+				String ownerName = owner == null ? null : owner.getString("login", null);
+				fullName = ownerName == null ? name : ownerName.concat("/").concat(name);
 			}
 			
-			s = new StringItem(null, j.getString("name"));
-			s.setFont(GH.medPlainFont);
-			s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-			s.setDefaultCommand(GH.mdLinkCmd);
-			s.setItemCommandListener(GH.midlet);
-			urls.put(s, j.getString("full_name"));
-			safeAppend(thread, s);
-			
-			if (!mini) {
-				boolean b, fork = j.getBoolean("fork", false), arch = j.getBoolean("archived", false);
-				if ((b = j.getBoolean("private", false)) || fork || arch) {
-					s.setLayout(Item.LAYOUT_LEFT);
-					
-					s = new StringItem(null, GH.L[b ?
-							(arch ? L_privateArchive_ : (fork ? L_privateFork_ : L_private_)) :
-								(arch ? L_archive_ : L_fork_)]);
-					s.setFont(GH.smallPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-					safeAppend(thread, s);
-				}
-				
-				if ((t = j.getString("description")) != null && t.length() != 0) {
-					s = new StringItem(null, t);
-					s.setFont(GH.smallPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE | Item.LAYOUT_NEWLINE_AFTER);
-					safeAppend(thread, s);
-				}
-				
-				if (b = ((t = j.getString("language")) != null && t.length() != 0)) {
-					s = new StringItem(null, t);
-					s.setFont(GH.smallPlainFont);
-					s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-					safeAppend(thread, s);
-				}
-				
-				s = new StringItem(null, (b ? " " : "").concat(GH.L[LUpdated])
-						.concat(GH.localizeDate((t = j.getString("pushed_at", null)) != null ? t : j.getString("updated_at"), 1)));
-				s.setFont(GH.smallPlainFont);
-				s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER);
-				safeAppend(thread, s);
-				safeAppend(thread, "\n");
+			StringBuffer metadata = new StringBuffer();
+			boolean privateRepo = j.getBoolean("private", false);
+			boolean fork = j.getBoolean("fork", false);
+			boolean archived = j.getBoolean("archived", false);
+			if (privateRepo || fork || archived) {
+				metadata.append(GH.L[privateRepo
+						? (archived ? L_privateArchive_ : (fork ? L_privateFork_ : L_private_))
+						: (archived ? L_archive_ : L_fork_)]);
 			}
+			String language = j.getString("language", null);
+			if (language != null && language.length() > 0) {
+				if (metadata.length() > 0) metadata.append("  -  ");
+				metadata.append(language);
+			}
+			String updated = j.getString("pushed_at", null);
+			if (updated == null) updated = j.getString("updated_at", null);
+			if (updated != null && updated.length() > 0) {
+				if (metadata.length() > 0) metadata.append("  -  ");
+				metadata.append(GH.L[LUpdated]).append(GH.localizeDate(updated, 1));
+			}
+			String description = mini ? "" : j.getString("description", "");
+			if (description == null) description = "";
+			RepoCardItem card = new RepoCardItem(fullName, description, metadata.toString());
+			card.setFont(GH.medPlainFont);
+			card.setDefaultCommand(GH.mdLinkCmd);
+			card.setItemCommandListener(GH.midlet);
+			urls.put(card, fullName);
+			safeAppend(thread, card);
 		}
 	}
 

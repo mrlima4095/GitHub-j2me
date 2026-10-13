@@ -24,8 +24,6 @@ import java.util.Hashtable;
 import javax.microedition.lcdui.Command;
 import javax.microedition.lcdui.Item;
 import javax.microedition.lcdui.ItemCommandListener;
-import javax.microedition.lcdui.Spacer;
-import javax.microedition.lcdui.StringItem;
 
 import cc.nnproject.json.JSONArray;
 import cc.nnproject.json.JSONObject;
@@ -59,48 +57,39 @@ public class CommitsForm extends PagedForm implements ItemCommandListener {
 		} else {
 			urls.clear();
 		}
-		StringItem s;
-		String t;
-		int k;
 		for (int i = 0; i < l && thread == this.thread; ++i) {
 			JSONObject j = r.getObject(i);
 			JSONObject commit = j.getObject("commit");
 
-			t = commit.getString("message");
-			if ((k = t.indexOf('\n')) != -1) t = t.substring(0, k);
-			
-			s = new StringItem(null, t);
-			s.setFont(GH.medBoldFont);
-			s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
-			if (j.has("repository")) {
-				urls.put(s, j.getObject("repository").getString("full_name")
-						.concat("/commit/".concat(j.getString("sha"))));
-			}
-			if (search) {
-				s.addCommand(GH.repoCmd);
-			}
-			s.setDefaultCommand(GH.mdLinkCmd);
-			s.setItemCommandListener(this);
-			safeAppend(thread, s);
-			
-			sb.setLength(0);
-			
+			String message = commit.getString("message", "");
+			int titleEnd = message.indexOf('\n');
+			String title = titleEnd == -1 ? message : message.substring(0, titleEnd).trim();
+			String description = titleEnd == -1 ? "" : message.substring(titleEnd + 1).trim();
+			StringBuffer metadata = new StringBuffer();
 			JSONObject m;
+			String t;
+			String author = null;
+			int authoredKey = L_authored;
 			if ((m = j.getObject("author")) != null && !"invalid-email-address".equals(t = m.getString("login"))) {
-				sb.append(t);
-				sb.append(GH.L[!t.equals(j.getObject("committer").getString("login")) ? L_authored : L_commited]);
+				author = t;
+				authoredKey = !t.equals(j.getObject("committer").getString("login")) ? L_authored : L_commited;
 			} else if ((m = commit.getObject("author")) != null) {
-				sb.append(t = m.getString("name"));
-				sb.append(GH.L[!t.equals(commit.getObject("committer").getString("name"))  ? L_authored : L_commited]);
+				author = m.getString("name");
+				authoredKey = !author.equals(commit.getObject("committer").getString("name")) ? L_authored : L_commited;
 			}
-			
-			sb.append(GH.localizeDate(commit.getObject("committer").getString("date"), 1));
-			
-			s = new StringItem(null, sb.toString());
-			s.setFont(GH.smallPlainFont);
-			s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_BEFORE);
-			safeAppend(thread, s);
-			safeAppend(thread, new Spacer(10, 8));
+			if (author != null) metadata.append(author).append(GH.L[authoredKey]);
+			String date = GH.localizeDate(commit.getObject("committer").getString("date"), 1);
+			metadata.append(date);
+
+			String repository = url;
+			if (j.has("repository")) repository = j.getObject("repository").getString("full_name", repository);
+			String sha = j.getString("sha", "");
+			RepoCardItem card = new RepoCardItem(title, description, metadata.toString());
+			card.setFont(GH.medPlainFont);
+			card.setDefaultCommand(GH.mdLinkCmd);
+			card.setItemCommandListener(this);
+			urls.put(card, repository.concat("/commit/").concat(sha));
+			safeAppend(thread, card);
 		}
 	}
 

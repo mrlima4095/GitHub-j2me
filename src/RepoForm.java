@@ -51,37 +51,25 @@ public class RepoForm extends GHForm {
 		
 		StringItem s;
 		String t;
-		
-		s = new StringItem(null, r.getObject("owner").getString("login"));
-		s.setFont(GH.medPlainFont);
-		s.setDefaultCommand(GH.userCmd);
-		s.setItemCommandListener(GH.midlet);
-		s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_BOTTOM | Item.LAYOUT_NEWLINE_BEFORE);
-		append(s);
-		
-		s = new StringItem(null, "/");
-		s.setFont(GH.medPlainFont);
-		s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_BOTTOM);
-		append(s);
-		
-		s = new StringItem(null, r.getString("name"));
-		s.setFont(GH.largePlainFont);
-		s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_BOTTOM);
-		append(s);
-		
-		if (r.getBoolean("private", false)) {
-			s = new StringItem(null, GH.L[L_private_]);
-			s.setFont(GH.smallPlainFont);
-			s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_BOTTOM);
-			append(s);
+		String owner = r.getObject("owner").getString("login");
+		String repoName = r.getString("name");
+		String description = r.getString("description", "");
+		StringBuffer bannerMeta = new StringBuffer();
+		if (r.getBoolean("private", false)) bannerMeta.append(GH.L[L_private_]);
+		String language = r.getString("language", null);
+		if (language != null && language.length() > 0) {
+		if (bannerMeta.length() > 0) bannerMeta.append("  -  ");
+			bannerMeta.append(language);
 		}
-
-		if ((t = r.getString("description")) != null && t.length() != 0) {
-			s = new StringItem(GH.L[LAbout_Repo], t);
-			s.setFont(GH.medPlainFont);
-			s.setLayout(Item.LAYOUT_LEFT | Item.LAYOUT_NEWLINE_AFTER | Item.LAYOUT_NEWLINE_BEFORE);
-			append(s);
+		String updated = r.getString("pushed_at", null);
+		if (updated == null) updated = r.getString("updated_at", null);
+		if (updated != null && updated.length() > 0) {
+			if (bannerMeta.length() > 0) bannerMeta.append("  -  ");
+			bannerMeta.append(GH.L[LUpdated]).append(GH.localizeDate(updated, 1));
 		}
+		RepoCardItem banner = new RepoCardItem(owner.concat("/").concat(repoName), description, bannerMeta.toString(), false);
+		banner.setFont(GH.medPlainFont);
+		append(banner);
 
 		if ((t = r.getString(GH.apiMode == GH.API_GITEA ? "website" : "homepage")) != null && t.length() != 0) {
 			s = new StringItem(GH.L[LHomepage_Repo], t);
