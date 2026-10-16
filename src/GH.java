@@ -307,6 +307,9 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	static Command nextCmd;
 
 	private static Command downloadPathCmd;
+	private static Command saveCmd;
+	private static Command discardCmd;
+	private static boolean discardSettingsPrompt;
 
 	// endregion Commands
 
@@ -397,6 +400,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			useProxy = b;
 		}
 		
+		lang = ((Host) host).getHostLanguage();
+		
 		// load settings
 		try {
 			RecordStore r = RecordStore.openRecordStore(SETTINGS_RECORDNAME, false);
@@ -408,7 +413,6 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			browseProxyUrl = j.getString("browseProxy", browseProxyUrl);
 			apiMode = j.getInt("apiMode", apiMode);
 			customApiUrl = j.getString("customApiUrl", customApiUrl);
-			lang = ((Host) host).getHostLanguage();
 			legacyUI = j.getBoolean("legacyUI", legacyUI);
 			canvasFullscreen = j.getBoolean("canvasFullscreen", canvasFullscreen);
 			noFormat = j.getBoolean("noFormat", noFormat);
@@ -555,6 +559,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		nextCmd = new Command(L[LNext], Command.OK, 1);
 
 		downloadPathCmd = new Command(L[LLocate], Command.ITEM, 1);
+		saveCmd = new Command(L[LSave], Command.SCREEN, 1);
+		discardCmd = new Command(L[LDiscard], Command.OK, 1);
 		
 		loadingForm = new CanvasForm(L[Lgh2me]);
 		loadingForm.append(L[LLoading]);
@@ -659,6 +665,19 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	// region UI Listeners
 
 	public void commandAction(Command c, Displayable d) {
+		// unsaved settings discard prompt
+		if (discardSettingsPrompt) {
+			discardSettingsPrompt = false;
+			if (c == discardCmd) {
+				loadSettingsForm();
+				display(mainForm, true);
+				return;
+			}
+			if (c == cancelCmd) {
+				display(settingsForm);
+				return;
+			}
+		}
 		// mainForm commands
 		if (d == mainForm) {
 			if (c == goCmd) {
@@ -669,6 +688,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				if (settingsForm == null) {
 					CanvasForm f = new CanvasForm(L[LSettings]);
 					f.addCommand(backCmd);
+					f.addCommand(saveCmd);
 					f.setCommandListener(this);
 
 					// api
@@ -745,6 +765,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 					
 					settingsForm = f;
 				}
+				loadSettingsForm();
 				display(settingsForm);
 				if (blackberry && blackberryNetwork == -1) {
 					try {
@@ -899,34 +920,20 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		}
 		// settingsForm commands
 		if (d == settingsForm) {
-			if (c == backCmd) {
+			if (c == saveCmd) {
 				int prevApiMode = apiMode;
-				
-				// save settings
-				proxyUrl = proxyField.getString();
-				browseProxyUrl = browseProxyField.getString();
-				loadImages = proxyChoice.isSelected(0);
-				useProxy = proxyChoice.isSelected(1);
-				onlineResize = proxyChoice.isSelected(2);
-				apiMode = modeChoice.getSelectedIndex();
-				legacyUI = legacyUIChoice.getSelectedIndex() == 1;
-				canvasFullscreen = canvasFullscreenChoice.getSelectedIndex() == 1;
-				if ((customApiUrl = customApiField.getString()).trim().length() == 0)
-					customApiUrl = null;
-
-				if (networkChoice != null)
-					blackberryNetwork = networkChoice.getSelectedIndex();
-
-				downloadMethod = downloadMethodChoice.getSelectedIndex();
-				downloadPath = downloadPathField.getString();
-
-				try {
-					writeConfig();
-				} catch (Exception ignored) {}
-				
+				saveSettingsForm();
 				if (prevApiMode != apiMode) {
 					start(RUN_VALIDATE_AUTH, null);
 				} else display(mainForm, true);
+				return;
+			}
+			if (c == backCmd) {
+				if (settingsFormDirty()) {
+					showDiscardSettingsPrompt();
+					return;
+				}
+				display(mainForm, true);
 				return;
 			}
 			if (c == downloadPathCmd) {
@@ -2682,6 +2689,87 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			// no jsr 75
 		}
 		browse(downloadFile[0]);
+	}
+
+	static void loadSettingsForm() {
+		if (proxyField == null) return;
+		proxyField.setString(proxyUrl == null ? "" : proxyUrl);
+		browseProxyField.setString(browseProxyUrl == null ? "" : browseProxyUrl);
+		proxyChoice.setSelectedIndex(0, loadImages);
+		proxyChoice.setSelectedIndex(1, useProxy);
+		proxyChoice.setSelectedIndex(2, onlineResize);
+		modeChoice.setSelectedIndex(apiMode, true);
+		legacyUIChoice.setSelectedIndex(legacyUI ? 1 : 0, true);
+		canvasFullscreenChoice.setSelectedIndex(canvasFullscreen ? 1 : 0, true);
+		customApiField.setString(customApiUrl == null ? GITEA_DEFAULT_API_URL : customApiUrl);
+		downloadMethodChoice.setSelectedIndex(downloadMethod, true);
+		downloadPathField.setString(downloadPath == null ? "" : downloadPath);
+		if (networkChoice != null) {
+			networkChoice.setSelectedIndex(blackberryNetwork == -1 ? 0 : blackberryNetwork, true);
+		}
+	}
+
+	private static String normalizedCustomApiUrl(String value) {
+		if (value == null) return GITEA_DEFAULT_API_URL;
+		value = value.trim();
+		return value.length() == 0 ? GITEA_DEFAULT_API_URL : value;
+	}
+
+	private static boolean stringChanged(String a, String b) {
+		if (a == null) return b != null;
+		return !a.equals(b);
+	}
+
+	static boolean settingsFormDirty() {
+		if (settingsForm == null) return false;
+		if (stringChanged(proxyField.getString(), proxyUrl)) return true;
+		if (stringChanged(browseProxyField.getString(), browseProxyUrl)) return true;
+		if (proxyChoice.isSelected(0) != loadImages) return true;
+		if (proxyChoice.isSelected(1) != useProxy) return true;
+		if (proxyChoice.isSelected(2) != onlineResize) return true;
+		if (modeChoice.getSelectedIndex() != apiMode) return true;
+		if ((legacyUIChoice.getSelectedIndex() == 1) != legacyUI) return true;
+		if ((canvasFullscreenChoice.getSelectedIndex() == 1) != canvasFullscreen) return true;
+		if (!normalizedCustomApiUrl(customApiField.getString()).equals(
+				normalizedCustomApiUrl(customApiUrl))) return true;
+		if (downloadMethodChoice.getSelectedIndex() != downloadMethod) return true;
+		String pathValue = downloadPathField.getString();
+		if (pathValue == null) pathValue = "";
+		if (!pathValue.equals(downloadPath == null ? "" : downloadPath)) return true;
+		if (networkChoice != null
+				&& networkChoice.getSelectedIndex() != (blackberryNetwork == -1 ? 0 : blackberryNetwork))
+			return true;
+		return false;
+	}
+
+	static void saveSettingsForm() {
+		proxyUrl = proxyField.getString();
+		browseProxyUrl = browseProxyField.getString();
+		loadImages = proxyChoice.isSelected(0);
+		useProxy = proxyChoice.isSelected(1);
+		onlineResize = proxyChoice.isSelected(2);
+		apiMode = modeChoice.getSelectedIndex();
+		legacyUI = legacyUIChoice.getSelectedIndex() == 1;
+		canvasFullscreen = canvasFullscreenChoice.getSelectedIndex() == 1;
+		if ((customApiUrl = customApiField.getString()).trim().length() == 0)
+			customApiUrl = null;
+		if (networkChoice != null)
+			blackberryNetwork = networkChoice.getSelectedIndex();
+		downloadMethod = downloadMethodChoice.getSelectedIndex();
+		downloadPath = downloadPathField.getString();
+		try {
+			writeConfig();
+		} catch (Exception ignored) {}
+	}
+
+	private void showDiscardSettingsPrompt() {
+		discardSettingsPrompt = true;
+		Alert a = alert(null, L[LUnsavedChanges], AlertType.WARNING);
+		a.setTimeout(Alert.FOREVER);
+		a.addCommand(discardCmd);
+		a.addCommand(cancelCmd);
+		a.setCommandListener(this);
+		display(a, settingsForm);
 	}
 
 	static void confirm(int task, Object param, String title, String text) {

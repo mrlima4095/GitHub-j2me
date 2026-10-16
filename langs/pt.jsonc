@@ -5,8 +5,8 @@
   "Exit": "Sair",
   "Back": "Voltar",
   "Settings": "Configurações",
-   "About": "Sobre",
-   "NowPlaying": "Tocando agora",
+  "About": "Sobre",
+  "NowPlaying": "Tocando agora",
   "_secondAgo": " há % segundo",
   "_secondsAgo": " há % segundos",
   "_secondsAgo2": "",
@@ -141,6 +141,9 @@
   "Next": "Próxima",
   "Ok": "OK",
   "Cancel": "Cancelar",
+  "Save": "Salvar",
+  "Discard": "Descartar",
+  "UnsavedChanges": "Descartar alterações não salvas?",
   "NextPage": "Próxima página",
   "PrevPage": "Página anterior",
   "GoToPage_Cmd": "Ir para a página...",
@@ -267,5 +270,9 @@
   "ChooseDownloadMethod_Alert": "Escolha o método de download",
   "RewriteFile_Alert": "O arquivo já existe. Substituir?",
   "DownloadFailed_Alert": "Falha ao baixar o arquivo",
-  "_": ""
+  "_": "",
+  "SelectMultiple": "Selecionar notas",
+  "DeleteSelected": "Excluir notas selecionadas",
+  "DeleteSelectedConfirm": "Excluir as notas selecionadas?",
+  "NotesDeleted": "Notas excluídas: {0}"
 }
