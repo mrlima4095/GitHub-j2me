@@ -63,6 +63,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 	public interface Host {
 		void openTokenNotePicker(int apiMode);
 		void openTelegramLink(String url);
+		void openWattpadLinkFromGH(String url);
 		String getHostLanguage();
 		void openMIDPlayNowPlayingFromGH();
 	}
@@ -2856,10 +2857,23 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				// workaround specifically for my e7 because "services" app doesn't work there
 				url = "nativeapp://application-uid=0x10008D39;content=4 " + url;
 			}
+			if (isWattpadUrl(url) && host instanceof GH.Host) {
+				((GH.Host) host).openWattpadLinkFromGH(url);
+				return;
+			}
 			if (host.platformRequest(url)) destroyApp(true);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	private static boolean isWattpadUrl(String url) {
+		if (url == null) return false;
+		String value = url.trim().toLowerCase();
+		if (value.startsWith("https://")) value = value.substring(8);
+		else if (value.startsWith("http://")) value = value.substring(7);
+		if (value.startsWith("www.")) value = value.substring(4);
+		return value.equals("wattpad.com") || value.startsWith("wattpad.com/");
 	}
 
 	static Object api(String url) throws IOException {
