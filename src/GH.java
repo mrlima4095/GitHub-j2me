@@ -64,6 +64,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		void openTokenNotePicker(int apiMode);
 		void openTelegramLink(String url);
 		void openWattpadLinkFromGH(String url);
+		void openRedditLinkFromGH(String url);
 		String getHostLanguage();
 		void openMIDPlayNowPlayingFromGH();
 	}
@@ -2861,6 +2862,10 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				((GH.Host) host).openWattpadLinkFromGH(url);
 				return;
 			}
+			if (isRedditUrl(url) && host instanceof GH.Host) {
+				((GH.Host) host).openRedditLinkFromGH(url);
+				return;
+			}
 			if (host.platformRequest(url)) destroyApp(true);
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -2874,6 +2879,20 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		else if (value.startsWith("http://")) value = value.substring(7);
 		if (value.startsWith("www.")) value = value.substring(4);
 		return value.equals("wattpad.com") || value.startsWith("wattpad.com/");
+	}
+
+	private static boolean isRedditUrl(String url) {
+		if (url == null) return false;
+		String value = url.trim().toLowerCase();
+		if (value.startsWith("https://")) value = value.substring(8);
+		else if (value.startsWith("http://")) value = value.substring(7);
+		if (value.startsWith("www.")) value = value.substring(4);
+		return value.equals("reddit.com")
+				|| value.startsWith("reddit.com/")
+				|| value.endsWith(".reddit.com")
+				|| value.indexOf(".reddit.com/") != -1
+				|| value.equals("redd.it")
+				|| value.startsWith("redd.it/");
 	}
 
 	static Object api(String url) throws IOException {
