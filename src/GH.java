@@ -64,6 +64,7 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		void openTokenNotePicker(int apiMode);
 		void openTelegramLink(String url);
 		void openWattpadLinkFromGH(String url);
+		void openPinterestLinkFromGH(String url);
 		void openRedditLinkFromGH(String url);
 		String getHostLanguage();
 		void openMIDPlayNowPlayingFromGH();
@@ -2862,6 +2863,10 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 				((GH.Host) host).openWattpadLinkFromGH(url);
 				return;
 			}
+			if (isPinterestUrl(url) && host instanceof GH.Host) {
+				((GH.Host) host).openPinterestLinkFromGH(url);
+				return;
+			}
 			if (isRedditUrl(url) && host instanceof GH.Host) {
 				((GH.Host) host).openRedditLinkFromGH(url);
 				return;
@@ -2879,6 +2884,18 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		else if (value.startsWith("http://")) value = value.substring(7);
 		if (value.startsWith("www.")) value = value.substring(4);
 		return value.equals("wattpad.com") || value.startsWith("wattpad.com/");
+	}
+
+	private static boolean isPinterestUrl(String url) {
+		if (url == null) return false;
+		String value = url.trim().toLowerCase();
+		if (value.startsWith("https://")) value = value.substring(8);
+		else if (value.startsWith("http://")) value = value.substring(7);
+		if (value.startsWith("www.")) value = value.substring(4);
+		return value.equals("pinterest.com")
+				|| value.startsWith("pinterest.com/")
+				|| value.endsWith(".pinterest.com")
+				|| value.indexOf(".pinterest.com/") != -1;
 	}
 
 	private static boolean isRedditUrl(String url) {
