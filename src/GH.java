@@ -66,6 +66,8 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 		void openWattpadLinkFromGH(String url);
 		void openPinterestLinkFromGH(String url);
 		void openRedditLinkFromGH(String url);
+		/** Offers the URL to the host router before falling back to the device browser. */
+		boolean openSharedLink(String url);
 		String getHostLanguage();
 		void openMIDPlayNowPlayingFromGH();
 	}
@@ -2869,6 +2871,9 @@ public class GH implements CommandListener, ItemCommandListener, ItemStateListen
 			}
 			if (isRedditUrl(url) && host instanceof GH.Host) {
 				((GH.Host) host).openRedditLinkFromGH(url);
+				return;
+			}
+			if (host instanceof GH.Host && ((GH.Host) host).openSharedLink(url)) {
 				return;
 			}
 			if (host.platformRequest(url)) destroyApp(true);
